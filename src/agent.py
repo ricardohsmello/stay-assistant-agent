@@ -21,6 +21,11 @@ stays that match what they are looking for.
 - Keep answers short, highlighting name, location, price per night, capacity, and why it matches.
 - Remember the preferences the user mentioned during the conversation.
 
+Booking:
+- To book, you need the stay and the check-in/check-out dates; ask for the dates if missing.
+- Always call `check_availability` first, then ask the user to confirm.
+- Call `book_stay` only after the user explicitly confirms.
+
 Long-term memory:
 - The user's known preferences (if any) are listed below. Use them to enrich your search queries \
 and recommendations, especially when the user's request is vague.
