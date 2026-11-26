@@ -2,13 +2,15 @@
 import threading
 import uuid
 
+from langchain_core.messages import SystemMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.mongodb import MongoDBSaver
 from langgraph.prebuilt import create_react_agent
 
 from src.config import CHAT_MODEL, CHECKPOINT_DB, USER_ID
 from src.db import client
-from src.memory import extract_and_save
+from src.memory import extract_and_save, get_user_preferences
 from src.tools import ALL_TOOLS
 
 SYSTEM_PROMPT = """You are Stay Assistant, an assistant that helps users find Airbnb \
@@ -20,8 +22,19 @@ stays that match what they are looking for.
 - Remember the preferences the user mentioned during the conversation.
 
 Long-term memory:
-- At the start of a conversation, call `get_preferences` once and use them to enrich your search queries.
+- The user's known preferences (if any) are listed below. Use them to enrich your search queries \
+and recommendations, especially when the user's request is vague.
 - Preferences are saved automatically by the system; you do not need to save them."""
+
+
+def build_prompt(state, config: RunnableConfig):
+    """Dynamic system prompt: base prompt + this user's saved preferences."""
+    user_id = (config.get("configurable") or {}).get("user_id", USER_ID)
+    prefs = get_user_preferences(user_id)
+    memory = ", ".join(prefs) if prefs else "none yet"
+    system = f"{SYSTEM_PROMPT}\n\nKnown preferences of this user: {memory}"
+    print(f"\n[prompt] user={user_id} preferences={prefs}")
+    return [SystemMessage(content=system)] + state["messages"]
 
 
 def build_agent():
@@ -30,7 +43,7 @@ def build_agent():
     return create_react_agent(
         llm,
         tools=ALL_TOOLS,
-        prompt=SYSTEM_PROMPT,
+        prompt=build_prompt,
         checkpointer=checkpointer,
     )
 
