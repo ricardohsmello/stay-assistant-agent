@@ -4,14 +4,13 @@ import uuid
 
 from langchain_core.messages import SystemMessage
 from langchain_core.runnables import RunnableConfig
-from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.mongodb import MongoDBSaver
-from langgraph.prebuilt import create_react_agent
+from langgraph.types import Command
 
-from src.config import CHAT_MODEL, CHECKPOINT_DB, USER_ID
+from src.config import CHECKPOINT_DB, USER_ID
 from src.db import client
 from src.memory import extract_and_save, get_user_preferences
-from src.tools import ALL_TOOLS
+from src.workflow import build_workflow
 
 SYSTEM_PROMPT = """You are Stay Assistant, an assistant that helps users find Airbnb \
 stays that match what they are looking for.
@@ -38,27 +37,29 @@ def build_prompt(state, config: RunnableConfig):
     prefs = get_user_preferences(user_id)
     memory = ", ".join(prefs) if prefs else "none yet"
     system = f"{SYSTEM_PROMPT}\n\nKnown preferences of this user: {memory}"
+    if state.get("plan"):
+        system += f"\n\nPlan for the current request:\n{state['plan']}"
     print(f"\n[prompt] user={user_id} preferences={prefs}")
     return [SystemMessage(content=system)] + state["messages"]
 
 
 def build_agent():
     checkpointer = MongoDBSaver(client, db_name=CHECKPOINT_DB)
-    llm = ChatOpenAI(model=CHAT_MODEL, temperature=0)
-    return create_react_agent(
-        llm,
-        tools=ALL_TOOLS,
-        prompt=build_prompt,
-        checkpointer=checkpointer,
-    )
+    return build_workflow(build_prompt, checkpointer)
 
 
 def ask(agent, question: str, thread_id: str, user_id: str = USER_ID) -> str:
-    result = agent.invoke(
-        {"messages": [("user", question)]},
-        config={"configurable": {"thread_id": thread_id, "user_id": user_id}},
-    )
-    answer = result["messages"][-1].content
+    config = {"configurable": {"thread_id": thread_id, "user_id": user_id}}
+
+    # If the graph is paused waiting for a booking confirmation, this message is the answer.
+    waiting = agent.get_state(config).next
+    user_input = Command(resume=question) if waiting else {"messages": [("user", question)]}
+
+    result = agent.invoke(user_input, config=config)
+    if "__interrupt__" in result:  # paused: show the confirmation question
+        answer = result["__interrupt__"][0].value
+    else:
+        answer = result["messages"][-1].content
 
     # Extract long-term preferences in the background so the reply isn't delayed.
     threading.Thread(
@@ -76,6 +77,10 @@ def get_history(agent, thread_id: str) -> list[dict]:
             history.append(
                 {"role": "user" if m.type == "human" else "assistant", "content": m.content}
             )
+    # A pending confirmation question isn't in the messages yet, so add it.
+    for task in state.tasks:
+        for i in task.interrupts:
+            history.append({"role": "assistant", "content": i.value})
     return history
 
 
