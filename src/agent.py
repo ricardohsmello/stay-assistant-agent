@@ -1,12 +1,14 @@
 """Stay Assistant: LangGraph agent that finds stays via MongoDB Vector Search."""
+import threading
 import uuid
 
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.mongodb import MongoDBSaver
 from langgraph.prebuilt import create_react_agent
 
-from src.config import CHAT_MODEL, CHECKPOINT_DB
+from src.config import CHAT_MODEL, CHECKPOINT_DB, USER_ID
 from src.db import client
+from src.memory import extract_and_save
 from src.tools import ALL_TOOLS
 
 SYSTEM_PROMPT = """You are Stay Assistant, an assistant that helps users find Airbnb \
@@ -15,7 +17,11 @@ stays that match what they are looking for.
 - Always search right away with whatever the user has said so far; never ask questions before searching.
 - After showing results, optionally offer to refine (e.g. by city, number of guests, or room type).
 - Keep answers short, highlighting name, location, price per night, capacity, and why it matches.
-- Remember the preferences the user mentioned during the conversation."""
+- Remember the preferences the user mentioned during the conversation.
+
+Long-term memory:
+- At the start of a conversation, call `get_preferences` once and use them to enrich your search queries.
+- Preferences are saved automatically by the system; you do not need to save them."""
 
 
 def build_agent():
@@ -29,12 +35,30 @@ def build_agent():
     )
 
 
-def ask(agent, question: str, thread_id: str) -> str:
+def ask(agent, question: str, thread_id: str, user_id: str = USER_ID) -> str:
     result = agent.invoke(
         {"messages": [("user", question)]},
-        config={"configurable": {"thread_id": thread_id}},
+        config={"configurable": {"thread_id": thread_id, "user_id": user_id}},
     )
-    return result["messages"][-1].content
+    answer = result["messages"][-1].content
+
+    # Extract long-term preferences in the background so the reply isn't delayed.
+    threading.Thread(
+        target=extract_and_save, args=(user_id, question, answer), daemon=True
+    ).start()
+    return answer
+
+
+def get_history(agent, thread_id: str) -> list[dict]:
+    """Return the visible chat history (user/assistant text only) of a thread."""
+    state = agent.get_state({"configurable": {"thread_id": thread_id}})
+    history = []
+    for m in state.values.get("messages", []):
+        if m.type in ("human", "ai") and isinstance(m.content, str) and m.content.strip():
+            history.append(
+                {"role": "user" if m.type == "human" else "assistant", "content": m.content}
+            )
+    return history
 
 
 if __name__ == "__main__":
