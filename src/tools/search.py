@@ -73,4 +73,8 @@ def search_stays(
             doc["price"] = float(doc["price"].to_decimal())
         doc["amenities"] = (doc.get("amenities") or [])[:10]
         results.append(doc)
+
+    print(f"\n[search_stays] query={query!r} filter={pre_filter or None}")
+    for r in results:
+        print(f"  - {r['name']}")
     return results
