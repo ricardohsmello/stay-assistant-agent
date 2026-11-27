@@ -1,8 +1,0 @@
-langgraph
-langgraph-checkpoint-mongodb
-langchain-mongodb
-langchain-core
-langchain-openai
-pymongo
-python-dotenv
-streamlit

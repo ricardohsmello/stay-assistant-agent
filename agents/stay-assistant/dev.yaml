@@ -1,0 +1,4 @@
+services:
+  mongodb:
+    # Don't start the empty local MongoDB: use MONGODB_URI from .env (Atlas)
+    local: false

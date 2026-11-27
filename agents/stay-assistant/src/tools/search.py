@@ -1,16 +1,15 @@
 """Tools for searching stays."""
 from typing import Optional
 
-from langchain_core.tools import tool
 from langchain_openai import OpenAIEmbeddings
 
 from src.config import EMBEDDING_FIELD, EMBEDDING_MODEL, VECTOR_INDEX
 from src.db import listings
 
-embedder = OpenAIEmbeddings(model=EMBEDDING_MODEL)
+# check_embedding_ctx_length=False: skips downloading the tiktoken file (blocked by egress)
+embedder = OpenAIEmbeddings(model=EMBEDDING_MODEL, check_embedding_ctx_length=False)
 
 
-@tool
 def search_stays(
     query: str,
     market: Optional[str] = None,
@@ -22,7 +21,8 @@ def search_stays(
 
     Args:
         query: description of what the user wants (e.g. "quiet flat near the beach with kitchen").
-        market: exact city/market, e.g. "Rio De Janeiro", "New York", "Barcelona".
+        market: exact city/market, e.g. "Rio De Janeiro", "New York", "Barcelona". Only set it if the
+            user explicitly named a city; otherwise leave it empty.
         room_type: "Entire home/apt", "Private room" or "Shared room".
         min_guests: minimum capacity (accommodates).
         limit: number of results.
@@ -42,6 +42,9 @@ def search_stays(
         "numCandidates": limit * 20,
         "limit": limit,
     }
+
+    print( "vector search pronto pra executar!")
+
     if pre_filter:
         vector_stage["filter"] = pre_filter
 
@@ -77,4 +80,8 @@ def search_stays(
     print(f"\n[search_stays] query={query!r} filter={pre_filter or None}")
     for r in results:
         print(f"  - {r['name']}")
+    # A made-up or too narrow city returns nothing: retry once without the city filter.
+    if not results and market:
+        print("  (no results, retrying without the market filter)")
+        return search_stays(query, None, room_type, min_guests, limit)
     return results

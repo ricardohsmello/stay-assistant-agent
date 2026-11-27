@@ -1,0 +1,12 @@
+# Project-level settings shared by all agents in this project.
+memory:
+  log_level: info
+  voyage:
+    model: "voyage-4-large"
+    dimension: 1024
+  extraction_llm:
+    provider: openai       # uses OPENAI_API_KEY for the background extraction
+    model: gpt-4o-mini     # cheap model for extraction
+  extraction:
+    enabled:
+      - semantic           # durable facts about the user, e.g. "likes beach view"
