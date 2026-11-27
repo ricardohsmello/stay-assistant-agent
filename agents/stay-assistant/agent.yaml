@@ -5,6 +5,8 @@ features:
   memory: true
 sandboxes:
   agent:
+    secrets:
+      - OPENAI_API_KEY
     network:
       egress_mode: allow_list
       egress:
@@ -12,6 +14,8 @@ sandboxes:
         - fqdn: api.openai.com
           ports: [443]
   tool:
+    secrets:
+      - OPENAI_API_KEY
     network:
       egress_mode: allow_list
       egress:
