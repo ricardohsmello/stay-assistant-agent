@@ -1,0 +1,20 @@
+entrypoint: src.main:app
+name: stay-assistant
+framework: langgraph
+features:
+  memory: true
+sandboxes:
+  agent:
+    network:
+      egress_mode: allow_list
+      egress:
+        # search_stays creates embeddings with OpenAI
+        - fqdn: api.openai.com
+          ports: [443]
+  tool:
+    network:
+      egress_mode: allow_list
+      egress:
+        # the LLM calls (app.llm) run in the tool sandbox
+        - fqdn: api.openai.com
+          ports: [443]
